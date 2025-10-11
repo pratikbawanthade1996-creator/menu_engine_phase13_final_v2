@@ -1,317 +1,329 @@
-/* =========================
-   Menu Engine — Phase 10.5
-   Fully defensive controller
-   ========================= */
+// engine/engine.js — Phase 11 Stable (robust JSON upload, business fields, single-file export)
 
-(() => {
-  "use strict";
+// ===== Imports =====
+import { renderTemplate } from './template-manager.js';
+import { applyTheme } from './theme-manager.js';
+import { REGISTRY, getSelectedTemplate, getSelectedTheme } from './registry.js';
 
-  // ---------- Short helpers ----------
-  const $id = (id) => document.getElementById(id);
-  const $ = (sel, root = document) => root.querySelector(sel);
-  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-  const on = (el, ev, fn) => el && el.addEventListener(ev, fn);
+// ===== Local storage keys =====
+const STORAGE_MENU  = 'menuEngineData_v1';
+const STORAGE_THEME = 'me:theme';
+const STORAGE_TPL   = 'me:template';
 
-  const setValById  = (id, val) => { const n = $id(id); if (n) n.value = val ?? ""; };
-  const setTextById = (id, val) => { const n = $id(id); if (n) n.textContent = val ?? ""; };
+// ===== App state =====
+export const state = {
+  menu: null,
+  theme:    localStorage.getItem(STORAGE_THEME) || REGISTRY.defaults.theme,
+  template: localStorage.getItem(STORAGE_TPL)   || REGISTRY.defaults.template,
+};
 
-  // ---------- LocalStorage keys ----------
-  const LS_DATA  = "ME10_5_DATA";
-  const LS_THEME = "ME10_5_THEME";
-  const LS_TPL   = "ME10_5_TEMPLATE";
-  const LS_LANG  = "ME10_5_LANG";
+// ===== Sample fallback (for “Load sample”) =====
+const SAMPLE = {
+  name: 'Junk House',
+  address: 'Civil Lines, Gondia, MH',
+  phone: '+91 98765 43210',
+  maps: 'https://maps.google.com/?q=Junk+House+Gondia',
+  whatsapp: '919876543210',
+  template: 'template-two-col',
+  theme: 'classic',
+  categories: [
+    { name: 'Starters', items: [
+      { name: 'Crispy Corn', price: 129, desc: 'Golden fried sweet corn' },
+      { name: 'Veg Manchurian', price: 149 }
+    ]},
+    { name: 'Main Course', items: [
+      { name: 'Paneer Butter Masala', price: 199 },
+      { name: 'Dal Tadka', price: 159 }
+    ]},
+  ]
+};
 
-  // ---------- Defaults (must exist in your registries/index) ----------
-  const DEFAULT_TEMPLATE = "template-e-fullpage";
-  const DEFAULT_THEME    = "neon";
-  const DEFAULT_LANG     = "en";
-
-  // global data
-  window.menuData = window.menuData || null;
-
-  // ---------- IO: load sample / choose file / download ----------
-  async function loadSample() {
-    try {
-      const res = await fetch("../data/sample.json");
-      const json = await res.json();
-      setMenuData(json);
-    } catch (e) {
-      console.error(e);
-      alert("Could not load sample.json");
-    }
+// ===== Tolerant JSON parser (BOM, comments, smart quotes, trailing commas) =====
+function parseJSONRelaxed(txt) {
+  if (!txt) throw new Error('Empty file');
+  if (txt.charCodeAt(0) === 0xFEFF) txt = txt.slice(1);            // strip BOM
+  txt = txt.replace(/\/\/.*?$|\/\*[\s\S]*?\*\//gm, '');             // comments
+  txt = txt.replace(/[“”]/g, '"').replace(/[‘’]/g, "'");            // smart quotes
+  txt = txt.replace(/,\s*([}\]])/g, '$1');                          // trailing commas
+  try { return JSON.parse(txt); }
+  catch {
+    const maybe = txt.replace(/'([^'\\]*(\\.[^'\\]*)*)'/g, '"$1"'); // single→double (best effort)
+    return JSON.parse(maybe);
   }
+}
 
-  function handleFileInput(ev) {
-    const file = ev?.target?.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const data = JSON.parse(reader.result);
-        setMenuData(data);
-      } catch (err) {
-        console.error(err);
-        alert("Invalid JSON: " + err.message);
+// ===== Normalizer (map arbitrary keys into our model) =====
+function normalizeMenu(raw) {
+  const src = raw?.menu ? raw.menu : (raw || {});
+
+  const out = {
+    name:     src.name || src.restaurant || src.title || 'Menu',
+    address:  src.address || src.location || '',
+    phone:    src.phone || src.contact || src.mobile || '',
+    whatsapp: (src.whatsapp || '').toString().replace(/\D/g,''),
+    maps:     src.maps || src.map || '',
+    template: src.template || state.template || 'template-two-col',
+    theme:    src.theme || state.theme || 'classic',
+    categories: []
+  };
+
+  let cats = src.categories;
+  if (!Array.isArray(cats)) cats = src.sections || src.category || src.groups || src.menus || [];
+  out.categories = (cats || []).map((sec, i) => {
+    const cname = sec?.name || sec?.title || sec?.category || sec?.heading || `Category ${i+1}`;
+    let items = sec?.items || sec?.dishes || sec?.entries || sec?.menu || sec?.products || sec?.list || [];
+    if (!Array.isArray(items)) items = [];
+    const norm = items.map(it => {
+      const nm = it?.name || it?.title || it?.item || it?.dish || it?.product || it?.label || '';
+      if (!nm) return null;
+      let price = it?.price ?? it?.cost ?? it?.rate ?? it?.amount ?? it?.mrp ?? '';
+      if (typeof price === 'string') {
+        const cleaned = price.replace(/[^\d.]/g,'');
+        price = cleaned ? Number(cleaned) : '';
       }
-    };
-    reader.readAsText(file);
-  }
+      const desc = it?.desc || it?.description || it?.details || it?.about || '';
+      return { name: nm, price, desc };
+    }).filter(Boolean);
+    return { name: cname, items: norm };
+  });
 
-  function downloadJSON() {
-    try {
-      const blob = new Blob([JSON.stringify(window.menuData || {}, null, 2)], { type: "application/json" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = "menu.json";
-      a.click();
-      URL.revokeObjectURL(a.href);
-    } catch (e) {
-      console.error(e);
-      alert("Download failed.");
-    }
-  }
+  return out;
+}
 
-  // ---------- Persistence ----------
-  function persist() {
-    try {
-      if (window.menuData) localStorage.setItem(LS_DATA, JSON.stringify(window.menuData));
-      localStorage.setItem(LS_TPL, getTemplateId());
-      localStorage.setItem(LS_THEME, getThemeKey());
-      localStorage.setItem(LS_LANG, getLangKey());
-    } catch { /* ignore */ }
-  }
+// ===== Drafts & selectors =====
+export function saveDraft(menuData = state.menu) {
+  try { localStorage.setItem(STORAGE_MENU, JSON.stringify(menuData)); alert('✅ Draft saved'); }
+  catch (e) { console.error(e); alert('Save failed'); }
+}
+export function loadDraft() {
+  try {
+    const raw = localStorage.getItem(STORAGE_MENU);
+    if (!raw) return alert('No draft found');
+    setMenu(normalizeMenu(parseJSONRelaxed(raw)));
+    alert('📂 Draft loaded');
+  } catch (e) { console.error(e); alert('Load failed'); }
+}
+export function clearDraft() { localStorage.removeItem(STORAGE_MENU); alert('🗑️ Draft cleared'); }
 
-  function autoload() {
-    try {
-      const saved = localStorage.getItem(LS_DATA);
-      const tpl  = localStorage.getItem(LS_TPL);
-      const th   = localStorage.getItem(LS_THEME);
-      const lg   = localStorage.getItem(LS_LANG);
+export function setTheme(name)   { state.theme    = getSelectedTheme(name);   localStorage.setItem(STORAGE_THEME, state.theme);   applyTheme(state.theme); render(); }
+export function setTemplate(name){ state.template = getSelectedTemplate(name); localStorage.setItem(STORAGE_TPL,   state.template); render(); }
 
-      if (tpl && $id("templateSelect")) $id("templateSelect").value = tpl;
-      if (th  && $id("themeSelect"))    $id("themeSelect").value    = th;
-      if (lg  && $id("langSelect"))     $id("langSelect").value     = lg;
+// ===== Init (wire UI) =====
+export function initApp() {
+  // expose for sidebar buttons
+  Object.assign(window, { saveDraft, loadDraft, clearDraft });
 
-      if (saved) {
-        setMenuData(JSON.parse(saved));
-        return true;
-      }
-    } catch { /* ignore */ }
-    return false;
-  }
+  const $ = (id) => document.getElementById(id);
 
-  function clearCache() {
-    try {
-      localStorage.removeItem(LS_DATA);
-      localStorage.removeItem(LS_TPL);
-      localStorage.removeItem(LS_THEME);
-      localStorage.removeItem(LS_LANG);
-      alert("Cache cleared.");
-    } catch { /* ignore */ }
-  }
+  // Business inputs
+  const fName  = $('bizName');
+  const fAddr  = $('bizAddress');
+  const fPhone = $('bizPhone');
+  const fWa    = $('bizWhatsApp');
+  const fMaps  = $('bizMaps');
 
-  // ---------- Brand / Section UI (defensive; safe if elements absent) ----------
-  function bindBrandFields(data) {
-    const r = data?.restaurant || {};
-    setValById('brandName',     r.name);
-    setValById('brandAddress',  r.address);
-    setValById('brandPhone',    r.phone);
-    setValById('brandWhatsapp', r.whatsapp);
-    setValById('brandHours',    r.hours);
-  }
-
-  function saveBrandToData() {
-    if (!window.menuData) window.menuData = {};
-    const r = (window.menuData.restaurant ||= {});
-    const get = (id) => $id(id)?.value?.trim();
-
-    if ($id('brandName'))     r.name     = get('brandName');
-    if ($id('brandAddress'))  r.address  = get('brandAddress');
-    if ($id('brandPhone'))    r.phone    = get('brandPhone');
-    if ($id('brandWhatsapp')) r.whatsapp = get('brandWhatsapp');
-    if ($id('brandHours'))    r.hours    = get('brandHours');
-  }
-
-  function fillSectionDropdown() {
-    const sel = $id('sectionSelect');
-    if (!sel) return;
-    sel.innerHTML = "";
-    const secs = window.menuData?.sections || [];
-    secs.forEach((s, i) => {
-      const opt = document.createElement('option');
-      opt.value = String(i);
-      opt.textContent = s?.title || `Section ${i+1}`;
-      sel.appendChild(opt);
-    });
-    if (secs.length) sel.value = "0";
-  }
-
-  // Optional inline table; harmless if your index.html has no table
-  function buildItemsTable(sectionIndex = 0) {
-    const table = $id('itemsTable');
-    if (!table) return;
-    const body = table.tBodies?.[0] || table.createTBody();
-    body.innerHTML = "";
-    const sec = window.menuData?.sections?.[sectionIndex];
-    if (!sec) return;
-    (sec.items || []).forEach(it => {
-      const tr = document.createElement('tr');
-      tr.innerHTML = `
-        <td><input type="text" value="${esc(it?.name)}"></td>
-        <td><input type="text" value="${esc(it?.desc || "")}"></td>
-        <td><input type="number" step="1" value="${Number(it?.price ?? 0)}"></td>
-      `;
-      body.appendChild(tr);
-    });
-  }
-
-  function updateItemsFromTable(sectionIndex = 0) {
-    const table = $id('itemsTable');
-    if (!table) return;
-    const sec = window.menuData?.sections?.[sectionIndex];
-    if (!sec) return;
-    const rows = $$("tbody tr", table);
-    sec.items = rows.map(tr => {
-      const [nameEl, descEl, priceEl] = $$("input", tr);
-      const priceNum = Number(priceEl?.value);
-      return {
-        name:  nameEl?.value?.trim() || "",
-        desc:  descEl?.value?.trim() || "",
-        price: Number.isFinite(priceNum) ? priceNum : 0
-      };
-    });
-  }
-
-  // ---------- Validation / Cleaning ----------
-  function validateAndClean() {
-    const d = window.menuData || {};
-    const secs = d.sections || [];
-    secs.forEach(sec => {
-      sec.title = (sec.title || "").toString().trim();
-      sec.items = (sec.items || []).map(it => {
-        const price = Number(it?.price);
-        return {
-          name:  (it?.name || "").toString().trim(),
-          desc:  (it?.desc || "").toString().trim(),
-          price: Number.isFinite(price) ? price : 0
-        };
-      });
-    });
-    alert("Validation complete. Basic cleaning applied.");
-    persist();
+  function pushBizToState() {
+    if (!state.menu) state.menu = {};
+    if (fName)  state.menu.name     = fName.value.trim();
+    if (fAddr)  state.menu.address  = fAddr.value.trim();
+    if (fPhone) state.menu.phone    = fPhone.value.trim();
+    if (fWa)    state.menu.whatsapp = (fWa.value || '').replace(/\D/g,'');
+    if (fMaps)  state.menu.maps     = fMaps.value.trim();
     render();
   }
+  [fName,fAddr,fPhone,fWa,fMaps].forEach(el => el && el.addEventListener('blur', pushBizToState));
 
-  // ---------- Render pipeline ----------
-  function getTemplateId() { return $id("templateSelect")?.value || DEFAULT_TEMPLATE; }
-  function getThemeKey()   { return $id("themeSelect")?.value    || DEFAULT_THEME; }
-  function getLangKey()    { return $id("langSelect")?.value     || DEFAULT_LANG; }
-
-  function pickSafeTemplate(tplId) {
-    try {
-      if (Array.isArray(TEMPLATE_REGISTRY) && TEMPLATE_REGISTRY.some(t => t.id === tplId)) return tplId;
-      return TEMPLATE_REGISTRY?.[0]?.id || DEFAULT_TEMPLATE;
-    } catch { return DEFAULT_TEMPLATE; }
+  // File loader
+  const file = $('file');
+  if (file) {
+    file.addEventListener('change', async (e) => {
+      const f = e.target.files?.[0];
+      if (!f) return;
+      try {
+        const txt  = await f.text();
+        const json = parseJSONRelaxed(txt);
+        setMenu(normalizeMenu(json));
+        alert('menu.json loaded');
+      } catch (err) {
+        console.error('Upload parse error:', err);
+        alert('Invalid JSON file');
+      }
+    });
   }
 
-  function render() {
-    // Save brand fields back (no-ops if inputs absent)
-    saveBrandToData();
+  // Buttons
+  const btnSample = $('btnLoadSample');          if (btnSample) btnSample.onclick = () => setMenu(SAMPLE);
+  const btnTpl    = $('btnDownloadTemplate');    if (btnTpl) btnTpl.onclick = () => {
+    const blob = new Blob([JSON.stringify(SAMPLE, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = 'menu-template.json'; a.click(); URL.revokeObjectURL(a.href);
+  };
 
-    const data = window.menuData || {};
-    if (!data.currency) data.currency = "₹";
+  const selTheme = $('themeSelect'); if (selTheme) { selTheme.value = state.theme;    selTheme.onchange = (e)=>setTheme(e.target.value); }
+  const selTpl   = $('templateSelect'); if (selTpl) { selTpl.value   = state.template; selTpl.onchange   = (e)=>setTemplate(e.target.value); }
 
-    const templateId = pickSafeTemplate(getTemplateId());
-    const themeKey   = getThemeKey();
+  const btnExportViewer = $('btnExportViewer');  if (btnExportViewer) btnExportViewer.onclick = () => exportViewerEmbedded();
+  const btnPrint        = $('btnPrint');         if (btnPrint)        btnPrint.onclick        = () => window.print();
+  const btnQR           = $('btnQR');            if (btnQR)           btnQR.onclick           = () => generateQR();
 
-    // Render inside the preview iframe (provided by template-manager.js)
-    renderInIframe({ templateId, theme: themeKey, data });
+  const btnMap   = $('btnViewMap'); if (btnMap) btnMap.onclick = () =>
+    state.menu?.maps ? window.open(state.menu.maps, '_blank') : alert('No maps link');
 
-    // Optional top pills if present
-    setTextById("hoursText", data.restaurant?.hours || "—");
-    setTextById("phoneText", data.restaurant?.phone || "—");
+  const btnShare = $('btnShareLoc'); if (btnShare) btnShare.onclick = async () => {
+    const url = state.menu?.maps || '';
+    const shareData = { title: state.menu?.name || 'Menu', text: (state.menu?.address || '') + '\n' + (state.menu?.phone || ''), url };
+    if (navigator.share) { try { await navigator.share(shareData); } catch {} }
+    else { await navigator.clipboard.writeText(url); alert('Link copied'); }
+  };
 
-    persist();
+  const btnWa = $('btnWhatsApp'); if (btnWa) btnWa.onclick = () => {
+    const n = (state.menu?.whatsapp || '').replace(/\D/g,'');
+    if (!n) return alert('No WhatsApp number');
+    const msg = encodeURIComponent(`${state.menu?.name || 'Restaurant'} - Requesting today menu/prices`);
+    window.open(`https://wa.me/${n}?text=${msg}`, '_blank');
+  };
+
+  // Boot: draft → sample
+  const saved = loadDraftSilent();
+  if (saved) setMenu(saved); else setMenu(SAMPLE);
+}
+
+// ===== Internals =====
+function setMenu(menu) {
+  const merged = normalizeMenu(menu || {});
+  state.menu = { ...merged };
+
+  // remember/validate selections
+  state.template = getSelectedTemplate(state.menu.template || state.template);
+  state.theme    = getSelectedTheme(state.menu.theme || state.theme);
+
+  // expose & apply theme, then render
+  window.currentMenu = state.menu;
+  applyTheme(state.theme);
+  render();
+
+  // sync sidebar fields from state
+  const $ = (id) => document.getElementById(id);
+  const fName  = $('bizName'), fAddr = $('bizAddress'), fPhone = $('bizPhone'), fWa = $('bizWhatsApp'), fMaps = $('bizMaps');
+  if (fName)  fName.value  = state.menu.name || '';
+  if (fAddr)  fAddr.value  = state.menu.address || '';
+  if (fPhone) fPhone.value = state.menu.phone || '';
+  if (fWa)    fWa.value    = state.menu.whatsapp || '';
+  if (fMaps)  fMaps.value  = state.menu.maps || '';
+}
+
+function render() {
+  const mount =
+    document.getElementById('preview') ||
+    document.getElementById('app')     ||
+    document.getElementById('mount');
+
+  if (!mount) { console.warn('No mount element (#preview/#app/#mount) found'); return; }
+
+  renderTemplate(state.template, state.menu)
+    .then(html => { mount.innerHTML = html; })
+    .catch(err => {
+      console.error('Render error:', err);
+      mount.innerHTML =
+        `<div style="padding:12px;border:1px solid #ef4444;color:#ef4444;border-radius:8px;background:#1b1111">
+           Failed to render template. Check console for details.
+         </div>`;
+    });
+}
+
+function loadDraftSilent() {
+  try {
+    const raw = localStorage.getItem(STORAGE_MENU);
+    return raw ? normalizeMenu(parseJSONRelaxed(raw)) : null;
+  } catch { return null; }
+}
+
+// ===== Export a standalone viewer.html (single file) =====
+export async function exportViewerEmbedded() {
+  if (!state.menu) return alert('Load a menu first');
+
+  const rendered = await renderTemplate(state.template, state.menu);
+
+  // collect current CSS custom properties safely (no nested backticks)
+  const root = getComputedStyle(document.documentElement);
+  const keys = ['bg','ink','muted','brand','accent'];
+  const cssVars = keys.map(k => `--${k}: ${root.getPropertyValue('--' + k).trim()};`).join('');
+
+  const title = escapeHtml(state.menu?.name || 'Menu');
+  const addr  = escapeHtml(state.menu?.address || '');
+  const phone = state.menu?.phone ? ' · ' + escapeHtml(state.menu.phone) : '';
+
+  const shell =
+`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>${title}</title>
+<style>
+  :root{ ${cssVars} }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;padding:16px}
+  a{color:var(--accent)}
+  .wrap{max-width:1100px;margin:0 auto}
+  header.viewer-hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
+  header.viewer-hdr h1{margin:0;font-size:22px}
+  header.viewer-hdr .muted{color:#9aa3ad;font-size:14px}
+  .card{background:#151a21;border:1px solid #232b36;border-radius:12px;padding:12px}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="viewer-hdr">
+      <h1>${title}</h1>
+      <div class="muted">${addr}${phone}</div>
+    </header>
+    <div class="card" id="menu">${rendered}</div>
+    <p class="muted" style="margin-top:12px">Offline viewer • generated by Menu Engine.</p>
+  </div>
+</body>
+</html>`;
+
+  const blob = new Blob([shell], { type: 'text/html' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'viewer.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  alert('📄 viewer.html (single-file) exported');
+}
+
+// ===== QR (optional; safe if lib missing) =====
+export function generateQR() {
+  let text = '';
+  const slugInput = document.getElementById('slugInput');
+  const domainInput = document.getElementById('domainInput');
+
+  if (slugInput?.value && domainInput?.value) {
+    text = `${domainInput.value.replace(/\/$/,'')}/${slugInput.value}/index.html`;
+  } else {
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(state.menu || {}))));
+    text = `${location.origin}${location.pathname}?data=${b64}`;
   }
 
-  // ---- SET MENU DATA (central entry) ----
-  function setMenuData(data) {
-    try {
-      window.menuData = data || {};
-      bindBrandFields(window.menuData);
-      fillSectionDropdown();
-      persist();
-      render();
-    } catch (err) {
-      console.error(err);
-      alert("Error applying menu data: " + err.message);
-    }
-  }
-  window.setMenuData = setMenuData;
+  if (!window.QRCode) { alert('QR library not loaded (add ../libs/qrcode.min.js).'); return; }
 
-  // ---------- Exporters ----------
-  function exportPDF() {
-    const iframe = $id('preview');
-    if (!iframe || !iframe.contentWindow) { alert("Preview not ready"); return; }
-    iframe.contentWindow.focus();
-    iframe.contentWindow.print();
-  }
+  const holder = document.getElementById('qrHolder') || document.body;
+  holder.innerHTML = '';
+  const div = document.createElement('div'); holder.appendChild(div);
+  // eslint-disable-next-line no-undef
+  new QRCode(div, { text, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.M });
+  setTimeout(() => {
+    const img = div.querySelector('img');
+    const link = document.createElement('a');
+    link.download = 'menu-qr.png';
+    link.href = img ? img.src : div.querySelector('canvas')?.toDataURL('image/png') || '';
+    if (link.href) link.click();
+  }, 300);
+}
 
-  function exportHTML() {
-    const iframe = $id('preview');
-    if (!iframe || !iframe.contentDocument) { alert("Preview not ready"); return; }
-    const doc = iframe.contentDocument;
-    const html = "<!doctype html>\n" + doc.documentElement.outerHTML;
-    const blob = new Blob([html], { type: "text/html" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "menu-static.html";
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }
-
-  // ---------- Utilities ----------
-  function esc(s = "") {
-    return String(s).replace(/[&<>"']/g, c => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
-    })[c]);
-  }
-
-  // ---------- Wire UI & boot ----------
-  function bindUI() {
-    // Buttons/inputs (defensive lookups to support variations of the index)
-    const fileInput       = $('input[type="file"]');
-    const loadSampleBtn   = $id('loadSampleBtn')   || $$('button').find(b => b.textContent.trim().toLowerCase() === 'load sample');
-    const renderBtn       = $id('renderBtn')       || $$('button').find(b => b.textContent.trim().toLowerCase() === 'render');
-    const exportHtmlBtn   = $id('exportHtmlBtn')   || $$('button').find(b => b.textContent.trim().toLowerCase() === 'export html');
-    const exportPdfBtn    = $id('exportPdfBtn')    || $$('button').find(b => b.textContent.trim().toLowerCase() === 'export pdf');
-    const downloadBtn     = $id('downloadJsonBtn') || $$('button').find(b => b.textContent.toLowerCase().includes('download menu.json'));
-    const validateBtn     = $id('validateBtn')     || $$('button').find(b => b.textContent.toLowerCase().includes('validate'));
-    const clearCacheBtn   = $id('clearCacheBtn')   || $$('button').find(b => b.textContent.toLowerCase().includes('clear cache'));
-
-    on(fileInput, 'change', handleFileInput);
-    on(loadSampleBtn, 'click', loadSample);
-    on(renderBtn, 'click', render);
-    on(exportHtmlBtn, 'click', exportHTML);
-    on(exportPdfBtn, 'click', exportPDF);
-    on(downloadBtn, 'click', downloadJSON);
-    on(validateBtn, 'click', validateAndClean);
-    on(clearCacheBtn, 'click', clearCache);
-
-    // Dropdowns
-    on($id('templateSelect'), 'change', () => { persist(); render(); });
-    on($id('themeSelect'),    'change', () => { persist(); render(); });
-    on($id('langSelect'),     'change', () => { persist(); render(); });
-  }
-
-  function init() {
-    bindUI();
-    if (!autoload()) {
-      // First-time: keep idle — user can Load sample or pick a file.
-      // To auto-load sample on first run, uncomment next line:
-      // loadSample();
-    }
-  }
-
-  document.addEventListener('DOMContentLoaded', init);
-})();
+// ===== utils =====
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, s => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[s]));
+}

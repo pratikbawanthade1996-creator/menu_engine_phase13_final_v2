@@ -1,265 +1,139 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Menu Engine — All-in-One (Owner Sidebar + Preview)</title>
-<meta name="theme-color" content="#0B0E13"/>
-<style>
-  :root{
-    --bg:#0B0E13; --panel:#0F141B; --text:#EDEFF3; --muted:#98A2AE; --border:#1A1F27;
-    --accent:#00FFD1; --accent-2:#7C4DFF; --radius:12px;
-  }
-  *{box-sizing:border-box} html,body{height:100%}
-  body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Inter,Roboto,Arial,sans-serif}
-  .shell{display:grid;grid-template-columns:300px 1fr;min-height:100vh}
-  aside{background:linear-gradient(180deg,rgba(11,14,19,.98),rgba(11,14,19,.92));border-right:1px solid var(--border);padding:16px;position:sticky;top:0;height:100vh;overflow:auto}
-  main{padding:16px}
-  h1{margin:6px 0 16px;font-size:18px;display:flex;align-items:center;gap:8px}
-  .logo{width:18px;height:18px;border-radius:6px;background:radial-gradient(circle at 30% 30%,var(--accent),var(--accent-2))}
-  .group{border:1px solid var(--border);border-radius:12px;margin-bottom:12px;background:rgba(255,255,255,.03)}
-  .group h2{margin:0;padding:10px 12px;font-size:14px;border-bottom:1px solid var(--border);color:#bfe}
-  .group .body{padding:10px 12px;display:grid;gap:8px}
-  label{font-size:13px;color:var(--muted);display:block}
-  input,select,button,textarea{
-    width:100%;background:var(--panel);color:var(--text);border:1px solid var(--border);
-    padding:8px 10px;border-radius:10px;font-size:14px
-  }
-  button{cursor:pointer} button:hover,select:hover{border-color:var(--accent)}
-  .row{display:grid;grid-template-columns: 1fr 1fr;gap:8px}
-  .btn{display:inline-flex;gap:8px;align-items:center;justify-content:center}
-  .btn-primary{background:linear-gradient(135deg,var(--accent),#83ffe9);color:#00110E;border:none;font-weight:800}
-  .btn-ghost{background:var(--panel)}
-  .muted{color:var(--muted)}
-  .tip{color:var(--muted);font-size:12px}
-  /* top controls in main */
-  .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px}
-  .panel{border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,.03);box-shadow:0 10px 30px rgba(0,0,0,.25)}
-  #preview{width:100%;height:calc(100vh - 110px);border:0;border-top:1px solid var(--border);border-radius:0 0 12px 12px;background:#0B0E13}
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  th,td{border-bottom:1px dashed #223;padding:6px 8px} th{color:#bfe;text-align:left}
-  .qrbox{display:flex;align-items:center;gap:10px}
-  .qr{width:140px;height:140px;background:#fff;border-radius:10px;display:flex;align-items:center;justify-content:center}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Menu Engine — Owner Dashboard</title>
+  <style>
+    :root{
+      --bg:#0f1216; --card:#151a21; --ink:#e8edf3; --muted:#9aa3ad; --line:#232b36;
+      --brand:#66e0a3; --accent:#73b4ff; --panel:#0c1016;
+      --font: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);display:grid;grid-template-columns:320px 1fr}
+    aside{background:var(--card);border-right:1px solid var(--line);padding:18px;display:flex;flex-direction:column;gap:14px}
+    main{padding:18px}
+    h1{margin:0;font-size:20px}
+    small{color:var(--muted)}
+    section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+    label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
+    input[type="file"],input[type="text"],select{width:100%;background:#0b1016;color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px}
+    .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+    button{background:linear-gradient(180deg,var(--brand),var(--accent));color:#0a0a0a;border:0;border-radius:12px;padding:10px 12px;font-weight:700;cursor:pointer}
+    button.ghost{background:#0b1016;color:var(--ink);border:1px solid var(--line)}
+    #preview,#app,#mount{background:var(--card);border:1px solid var(--line);border-radius:14px;min-height:70vh;padding:16px}
+    .muted{color:var(--muted)}
+    footer{color:var(--muted);font-size:12px;text-align:center}
+    @media print{ aside{display:none} body{grid-template-columns:1fr} }
+  </style>
 </head>
 <body>
-<div class="shell">
-  <!-- LEFT: Owner sidebar -->
+  <!-- SIDEBAR -->
   <aside>
-    <h1><span class="logo"></span> Owner Tools</h1>
-
-    <div class="group">
-      <h2>Data</h2>
-      <div class="body">
-        <div class="row">
-          <button id="loadSampleBtn" class="btn btn-ghost">Load sample</button>
-          <input id="jsonFile" type="file" accept=".json,application/json"/>
-        </div>
-        <div class="row">
-          <button id="downloadJsonBtn" class="btn btn-ghost">Download menu.json</button>
-          <button id="validateBtn" class="btn btn-ghost">Validate & Clean</button>
-        </div>
-        <div class="row">
-          <button id="clearCacheBtn" class="btn btn-ghost">Clear Cache</button>
-          <button id="renderBtn" class="btn btn-primary">Render</button>
-        </div>
-        <div class="tip">Tip: JSON can include <code>restaurant.whatsapp</code> and <code>restaurant.locationLink</code> to enable CTAs.</div>
-      </div>
+    <div>
+      <h1>Menu Engine</h1>
+      <small>Offline • Gondia • ClientFirst.digital</small>
     </div>
 
-    <div class="group">
-      <h2>Restaurant</h2>
-      <div class="body">
-        <div class="row">
-          <div><label>Name</label><input id="brandName" placeholder="Restaurant Name"/></div>
-          <div><label>Hours</label><input id="brandHours" placeholder="12pm–11pm"/></div>
-        </div>
-        <div class="row">
-          <div><label>Phone</label><input id="brandPhone" placeholder="07182-12345"/></div>
-          <div><label>WhatsApp</label><input id="brandWhatsapp" placeholder="919876543210"/></div>
-        </div>
-        <div><label>Address</label><input id="brandAddress" placeholder="Main Road, Gondia"/></div>
+    <!-- Load JSON -->
+    <section>
+      <label for="file">Load menu.json</label>
+      <input id="file" type="file" accept="application/json,.json,.txt" />
+      <div class="row">
+        <button id="btnLoadSample" class="ghost">Load sample</button>
+        <button id="btnDownloadTemplate" class="ghost">Download template JSON</button>
       </div>
-    </div>
+    </section>
 
-    <div class="group">
-      <h2>Sections & Items</h2>
-      <div class="body">
-        <label>Section</label>
-        <select id="sectionSelect"></select>
-        <table id="itemsTable">
-          <thead><tr><th>Item</th><th>Description</th><th>Price</th></tr></thead>
-          <tbody></tbody>
-        </table>
-        <button id="saveItemsBtn" class="btn btn-ghost">Save Items</button>
-      </div>
-    </div>
-
-    <div class="group">
-      <h2>Bulk Price Edit</h2>
-      <div class="body">
-        <div class="row">
-          <div><label>Change (%)</label><input id="bulkPct" type="number" step="1" value="10"/></div>
-          <div><label>Round to</label>
-            <select id="bulkRound">
-              <option value="none">No Rounding</option>
-              <option value="1">Nearest ₹1</option>
-              <option value="5">Nearest ₹5</option>
-              <option value="10">Nearest ₹10</option>
-            </select>
-          </div>
+    <!-- Template / Theme -->
+    <section>
+      <div class="row">
+        <div style="flex:1 1 140px">
+          <label for="templateSelect">Template</label>
+          <select id="templateSelect">
+            <option value="template-two-col">Two Column</option>
+            <option value="template-grid">Grid Cards</option>
+          </select>
         </div>
-        <button id="applyBulkBtn" class="btn btn-ghost">Apply to current section</button>
-        <div class="tip">Positive = increase, negative = discount (e.g., -10).</div>
-      </div>
-    </div>
-
-    <div class="group">
-      <h2>WhatsApp & Location</h2>
-      <div class="body">
-        <div><label>Google Maps Link</label><input id="locationLink" placeholder="https://maps.google.com/?q=..."/></div>
-        <div class="qrbox">
-          <div class="qr"><canvas id="qrCanvas" width="140" height="140"></canvas></div>
-          <div>
-            <button id="openWaBtn" class="btn btn-ghost">Open WhatsApp Chat</button><br/>
-            <button id="openLocBtn" class="btn btn-ghost">Open Location</button><br/>
-            <button id="shareLocBtn" class="btn btn-ghost">Share Location (WA)</button><br/>
-            <span class="muted">QR encodes the menu URL (if hosted) or your Maps link.</span>
-          </div>
+        <div style="flex:1 1 140px">
+          <label for="themeSelect">Theme</label>
+          <select id="themeSelect">
+            <option value="classic">Classic</option>
+            <option value="neon">Neon</option>
+          </select>
         </div>
       </div>
-    </div>
+    </section>
+
+    <!-- NEW: Business Details -->
+    <section>
+      <label>Business Details</label>
+      <input id="bizName"     type="text" placeholder="Restaurant name" style="margin-top:6px">
+      <input id="bizAddress"  type="text" placeholder="Address"         style="margin-top:6px">
+      <input id="bizPhone"    type="text" placeholder="Phone (display)" style="margin-top:6px">
+      <input id="bizWhatsApp" type="text" placeholder="WhatsApp (e.g., 919876543210)" style="margin-top:6px">
+      <input id="bizMaps"     type="text" placeholder="Google Maps link" style="margin-top:6px">
+    </section>
+
+    <!-- Save/Load Draft -->
+    <section>
+      <label>Owner Draft</label>
+      <div class="row">
+        <button class="ghost" onclick="saveDraft()">💾 Save Draft</button>
+        <button class="ghost" onclick="loadDraft()">📂 Load Draft</button>
+        <button class="ghost" onclick="clearDraft()">🗑️ Clear Draft</button>
+      </div>
+      <div class="muted" style="margin-top:6px">Data stays in this browser (localStorage).</div>
+    </section>
+
+    <!-- Export -->
+    <section>
+      <label>Export</label>
+      <div class="row">
+        <button id="btnExportViewer">Export viewer.html</button>
+        <button id="btnPrint" class="ghost">Print / Save PDF</button>
+      </div>
+    </section>
+
+    <!-- QR -->
+    <section>
+      <label>QR (hosted URL preferred)</label>
+      <input id="domainInput" type="text" placeholder="https://menu.clientfirst.digital" />
+      <input id="slugInput" type="text" placeholder="restaurant-slug (e.g., junkhouse)" style="margin-top:6px" />
+      <div class="row">
+        <button id="btnQR" class="ghost">Generate QR</button>
+      </div>
+      <div id="qrHolder" class="row" style="margin-top:6px"></div>
+      <div class="muted" style="margin-top:6px">If domain/slug empty, QR embeds data as base64.</div>
+    </section>
+
+    <!-- Quick Links -->
+    <section>
+      <label>Quick</label>
+      <div class="row">
+        <button id="btnViewMap" class="ghost">View Map</button>
+        <button id="btnShareLoc" class="ghost">Share Location</button>
+        <button id="btnWhatsApp" class="ghost">WhatsApp</button>
+      </div>
+    </section>
+
+    <footer>Built with ❤ in Gondia • v11</footer>
   </aside>
 
-  <!-- RIGHT: Preview + top controls -->
+  <!-- PREVIEW AREA -->
   <main>
-    <div class="bar">
-      <label>Template:&nbsp;
-        <select id="templateSelect">
-          <option value="template-e-fullpage" selected>Template E — Full Page</option>
-          <option value="template-c-split-two-col">Template C — Split Two Column</option>
-        </select>
-      </label>
-      <label>Theme:&nbsp;
-        <select id="themeSelect">
-          <option value="neon" selected>Neon Night</option>
-          <option value="classic">Classic</option>
-        </select>
-      </label>
-      <label>Language:&nbsp;
-        <select id="langSelect">
-          <option value="en" selected>English</option>
-          <option value="hi">हिंदी</option>
-        </select>
-      </label>
-      <button id="exportHtmlBtn" class="btn btn-ghost">Export HTML</button>
-      <button id="exportPdfBtn" class="btn btn-ghost">Export PDF</button>
-    </div>
-
-    <div class="panel">
-      <iframe id="preview" title="Preview"></iframe>
-    </div>
+    <div id="preview">Load a menu to preview…</div>
   </main>
-</div>
 
-<!-- Registries & managers BEFORE engine.js -->
-<script src="registry.js"></script>
-<script src="theme-manager.js"></script>
-<script src="template-manager.js"></script>
-<script src="engine.js"></script>
+  <!-- (QR lib optional; keep disabled if file not present) -->
+  <!-- <script src="../libs/qrcode.min.js"></script> -->
 
-<!-- Tiny offline QR painter (placeholder; replace with real QR lib later if needed) -->
-<script>
-function drawSimpleQR(canvas, text){
-  if(!canvas || !canvas.getContext) return;
-  const ctx = canvas.getContext('2d'), W=canvas.width, H=canvas.height;
-  ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
-  ctx.lineWidth=4; ctx.strokeRect(2,2,W-4,H-4);
-  // finder squares
-  const s=26;
-  [['#000',8,8],['#000',W-8-s,8],['#000',8,H-8-s]].forEach(([c,x,y])=>{
-    ctx.fillStyle=c; ctx.fillRect(x,y,s,s); ctx.fillStyle='#fff'; ctx.fillRect(x+6,y+6,s-12,s-12); ctx.fillStyle=c; ctx.fillRect(x+10,y+10,s-20,s-20);
-  });
-  // pseudo pattern (unique per text)
-  let h=0; for(let i=0;i<text.length;i++){h=(h*31+text.charCodeAt(i))>>>0;}
-  ctx.fillStyle='#000';
-  for(let y=0;y<40;y++)for(let x=0;x<40;x++){
-    const bit=((h>>((x+y)%24))&1)^(x*y%3==0?1:0);
-    if(bit) ctx.fillRect(40+x*2,40+y*2,2,2);
-  }
-}
-</script>
-
-<!-- Wire the sidebar to engine.js -->
-<script>
-(function(){
-  const $id = (id)=>document.getElementById(id);
-  const on = (el,ev,fn)=>el&&el.addEventListener(ev,fn);
-
-  // File/sample
-  on($id('jsonFile'),'change', e=>{
-    const f=e.target.files?.[0]; if(!f) return;
-    const r=new FileReader(); r.onload=()=>{ try{ setMenuData(JSON.parse(r.result)); }catch(err){ alert('Invalid JSON: '+err.message);} };
-    r.readAsText(f);
-  });
-  on($id('loadSampleBtn'),'click', async ()=>{
-    try{ const res=await fetch('./data/sample.json'); setMenuData(await res.json()); }catch(e){ alert('Could not load sample.json'); }
-  });
-
-  // Manage JSON + cache
-  on($id('downloadJsonBtn'),'click', ()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(window.menuData||{},null,2)],{type:'application/json'})); a.download='menu.json'; a.click(); URL.revokeObjectURL(a.href);});
-  on($id('validateBtn'),'click', ()=>{ window.validateAndClean ? validateAndClean() : alert('Validate not found');});
-  on($id('clearCacheBtn'),'click', ()=>{ localStorage.clear(); alert('Cache cleared'); });
-
-  // Brand quick edits (engine.js reads ids on render)
-  ['brandName','brandAddress','brandPhone','brandWhatsapp','brandHours'].forEach(id=>{
-    on($id(id),'input', ()=>{ if(window.menuData){ const r=(window.menuData.restaurant ||= {}); r.name=$id('brandName')?.value||r.name; r.address=$id('brandAddress')?.value||r.address; r.phone=$id('brandPhone')?.value||r.phone; r.whatsapp=$id('brandWhatsapp')?.value||r.whatsapp; r.hours=$id('brandHours')?.value||r.hours; } });
-  });
-  on($id('renderBtn'),'click', ()=> window.render && render());
-
-  // Sections & items
-  on($id('sectionSelect'),'change', e=>{ window.buildItemsTable && buildItemsTable(Number(e.target.value)||0); });
-  on($id('saveItemsBtn'),'click', ()=>{ const idx=Number($id('sectionSelect')?.value||0); window.updateItemsFromTable && updateItemsFromTable(idx); render(); });
-
-  // Bulk price edit
-  on($id('applyBulkBtn'),'click', ()=>{
-    const pct=Number($id('bulkPct')?.value||0);
-    const rnd=$id('bulkRound')?.value||'none';
-    const ix=Number($id('sectionSelect')?.value||0);
-    const sec=window.menuData?.sections?.[ix];
-    if(!sec) return alert('No section selected');
-    (sec.items||[]).forEach(it=>{
-      let p=Number(it.price||0);
-      p = p + (p*pct/100);
-      if(rnd!=='none'){ const n=Number(rnd); p=Math.round(p/n)*n; }
-      it.price=Math.max(0,Math.round(p));
-    });
-    window.buildItemsTable && buildItemsTable(ix);
-    render();
-  });
-
-  // CTAs & QR
-  function waNumber(){ return (window.menuData?.restaurant?.whatsapp||'').replace(/[^\d]/g,''); }
-  function mapsLink(){ return window.menuData?.restaurant?.locationLink || $id('locationLink')?.value || ''; }
-
-  on($id('openWaBtn'),'click', ()=>{ const num=waNumber(); if(!num) return alert('Add WhatsApp number first.'); window.open('https://wa.me/'+num,'_blank'); });
-  on($id('openLocBtn'),'click', ()=>{ const link=mapsLink(); if(!link) return alert('Add Google Maps link first.'); window.open(link,'_blank'); });
-  on($id('shareLocBtn'),'click', ()=>{ const nm=window.menuData?.restaurant?.name||'Restaurant'; const link=mapsLink(); if(!link) return alert('Add Google Maps link first.'); window.open('https://wa.me/?text='+encodeURIComponent(`📍 ${nm} location: ${link}`),'_blank'); });
-
-  function paintQR(){
-    const canvas=$id('qrCanvas');
-    const data = mapsLink() || location.href; // if hosted, this becomes public menu URL
-    drawSimpleQR(canvas,data);
-  }
-  on($id('locationLink'),'input', paintQR);
-  setTimeout(paintQR,50);
-
-  // Template/Theme/Language -> re-render
-  ['templateSelect','themeSelect','langSelect'].forEach(id=> on($id(id),'change', ()=>{ window.render && render(); }));
-
-  // After engine.js autoload runs, build first table a bit later
-  setTimeout(()=>{ window.buildItemsTable && buildItemsTable(0); }, 350);
-})();
-</script>
+  <!-- App bootstrap -->
+  <script type="module">
+    import { initApp } from './engine.js';
+    initApp();
+  </script>
 </body>
 </html>
