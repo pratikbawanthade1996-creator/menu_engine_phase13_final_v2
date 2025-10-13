@@ -237,21 +237,51 @@ function loadDraftSilent() {
     return raw ? normalizeMenu(parseJSONRelaxed(raw)) : null;
   } catch { return null; }
 }
+// ===== Phase-13 helpers (safe re-define) =====
+window.slug = window.slug || function (s) {
+  return String(s).toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+};
 
-// ===== Export a standalone viewer.html (single file) =====
+window.escapeHtml = window.escapeHtml || function (str) {
+  return String(str).replace(/[&<>"']/g, m => (
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])
+  ));
+};
+
+// ===== Export a standalone viewer.html (single file) — Phase 13: nav + search =====
 export async function exportViewerEmbedded() {
-  if (!state.menu) return alert('Load a menu first');
+  if (!state.menu) { alert('Load a menu first'); return; }
 
   const rendered = await renderTemplate(state.template, state.menu);
 
-  // collect current CSS custom properties safely (no nested backticks)
+  // theme vars
   const root = getComputedStyle(document.documentElement);
   const keys = ['bg','ink','muted','brand','accent'];
   const cssVars = keys.map(k => `--${k}: ${root.getPropertyValue('--' + k).trim()};`).join('');
 
-  const title = escapeHtml(state.menu?.name || 'Menu');
-  const addr  = escapeHtml(state.menu?.address || '');
-  const phone = state.menu?.phone ? ' · ' + escapeHtml(state.menu.phone) : '';
+  // read business fields (JSON -> fallback sidebar)
+  const getVal = (id) => (document.getElementById(id)?.value || '').trim();
+  const title = escapeHtml(state.menu?.name || getVal('bizName') || 'Menu');
+  const addr  = escapeHtml(state.menu?.address || getVal('bizAddress') || '');
+  const phoneRaw = (state.menu?.phone || getVal('bizPhone') || '').trim();
+  const phone = phoneRaw;
+  const waDigits = (state.menu?.whatsapp || getVal('bizWhatsApp') || '').replace(/\D/g,'');
+  const maps  = (state.menu?.maps || getVal('bizMaps') || '');
+
+  const callHref = phoneRaw ? `tel:${phoneRaw.replace(/\s+/g,'')}` : '';
+  const waHref   = waDigits ? `https://wa.me/${waDigits}?text=${encodeURIComponent(title + ' — Hi!')}` : '';
+  const mapHref  = maps ? maps : '';
+
+  // categories for nav (from data)
+  const cats = Array.isArray(state.menu?.categories) ? state.menu.categories : [];
+  const navHtml = cats.map(c => {
+    const name = String(c?.name || '').trim();
+    if (!name) return '';
+    const id = slug(name);
+    return `<button class="chip" data-target="sec-${id}">${escapeHtml(name)}</button>`;
+  }).join('');
 
   const shell =
 `<!doctype html>
@@ -262,24 +292,135 @@ export async function exportViewerEmbedded() {
 <style>
   :root{ ${cssVars} }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;padding:16px}
-  a{color:var(--accent)}
-  .wrap{max-width:1100px;margin:0 auto}
-  header.viewer-hdr{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px}
-  header.viewer-hdr h1{margin:0;font-size:22px}
-  header.viewer-hdr .muted{color:#9aa3ad;font-size:14px}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial}
+  .wrap{max-width:1100px;margin:0 auto;padding:16px}
+  /* Sticky header */
+  header.viewer-hdr{position:sticky;top:0;background:linear-gradient(180deg, rgba(15,18,22,.96), rgba(15,18,22,.88));backdrop-filter: blur(4px);z-index:20;padding:10px 16px;border-bottom:1px solid #232b36}
+  header.viewer-hdr h1{margin:0;font-size:20px}
+  header.viewer-hdr .muted{color:#9aa3ad;font-size:13px;margin-top:4px}
+
+  /* Top tools: search + category chips (sticky) */
+  .tools{position:sticky; top:60px; z-index:15; background:rgba(15,18,22,.92); backdrop-filter: blur(4px); border-bottom:1px solid #232b36}
+  .tools-inner{max-width:1100px;margin:0 auto;padding:10px 16px 8px}
+  .search{width:100%; padding:10px 12px; border:1px solid #2a3240; background:#0f1216; color:var(--ink); border-radius:10px}
+  .chips{display:flex; gap:8px; margin-top:8px; overflow:auto; padding-bottom:4px}
+  .chip{border:1px solid #2a3240; background:#12171e; color:var(--ink); border-radius:999px; padding:8px 12px; cursor:pointer; white-space:nowrap}
+  .chip:hover{border-color:#3b4657}
+
+  /* Menu card */
   .card{background:#151a21;border:1px solid #232b36;border-radius:12px;padding:12px}
+  .spacer{height:64px}
+
+  /* Bottom CTA bar */
+  .cta{position:fixed;left:8px;right:8px;bottom:8px;display:flex;gap:8px;justify-content:center;background:rgba(10,12,15,.85);backdrop-filter: blur(4px);border:1px solid #232b36;border-radius:14px;padding:10px;z-index:30}
+  .btn{border:1px solid #2a3240;border-radius:14px;padding:10px 14px;text-decoration:none;color:var(--ink);font-weight:700}
+  .btn.primary{background:var(--brand);color:#0b0b0b;border:0}
+
+  /* Print */
+  @media print{
+    header.viewer-hdr,.tools,.cta,.spacer{display:none!important}
+    body{background:#fff;color:#000}
+    .card{border:0}
+    .sec{break-inside:avoid}
+    .wrap{padding:0}
+  }
 </style>
 </head>
 <body>
-  <div class="wrap">
-    <header class="viewer-hdr">
-      <h1>${title}</h1>
-      <div class="muted">${addr}${phone}</div>
-    </header>
-    <div class="card" id="menu">${rendered}</div>
-    <p class="muted" style="margin-top:12px">Offline viewer • generated by Menu Engine.</p>
+  <header class="viewer-hdr">
+    <h1>${title}</h1>
+    <div class="muted">${addr}${phone ? ' · ' + phone : ''}</div>
+  </header>
+
+  <div class="tools">
+    <div class="tools-inner">
+      <input id="q" class="search" placeholder="Search dishes… (e.g., paneer, shake)" />
+      <div class="chips">${navHtml}</div>
+    </div>
   </div>
+
+  <div class="wrap">
+    <div class="card" id="menu">${rendered}</div>
+    <div class="spacer"></div>
+  </div>
+
+  <div class="cta">
+    ${callHref ? `<a class="btn" href="${callHref}">📞 Call</a>` : ''}
+    ${waHref   ? `<a class="btn primary" href="${waHref}" target="_blank">💬 WhatsApp</a>` : ''}
+    ${mapHref  ? `<a class="btn" href="${mapHref}" target="_blank">📍 Map</a>` : ''}
+  </div>
+
+  <script>
+  // Work inside the rendered card only
+  const container = document.getElementById('menu');
+
+  // -------- Category chips: robust scroll ----------
+  document.querySelectorAll('.chip').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      const targetId = chip.getAttribute('data-target');     // e.g. sec-paneer-e-azam
+      const targetName = chip.textContent.trim().toLowerCase();
+
+      // 1) Try exact id first
+      let el = container.querySelector('#'+CSS.escape(targetId));
+
+      // 2) Try any element whose id starts with sec- and whose text matches
+      if (!el) {
+        const secs = container.querySelectorAll('[id^="sec-"]');
+        for (const s of secs) {
+          const txt = (s.querySelector('h1,h2,h3,h4')?.textContent || s.textContent || '').trim().toLowerCase();
+          if (txt.includes(targetName)) { el = s; break; }
+        }
+      }
+
+      // 3) Fallback: search headings by text
+      if (!el) {
+        const heads = container.querySelectorAll('h1,h2,h3,h4');
+        for (const h of heads) {
+          if ((h.textContent || '').trim().toLowerCase().includes(targetName)) {
+            el = h.closest('section') || h;
+            break;
+          }
+        }
+      }
+
+      if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
+    });
+  });
+
+  // -------- Search: robust selectors ----------
+  const q = document.getElementById('q');
+
+  // Helper: find all "items" with many possible class names
+  function getItems() {
+    // Try common patterns used across our templates
+    let list = container.querySelectorAll(
+      '.item, .mi, .menu-item, li.menu-item, li.item, .dish, .row'
+    );
+    // If nothing found, fall back to any element that has a price on the right
+    if (!list.length) list = container.querySelectorAll('[data-item], .menu__item, .menuItem');
+    return Array.from(list);
+  }
+
+  // Helper: extract name node from an item
+  function getItemNameText(item) {
+    const nameEl =
+      item.querySelector('.t, .mi-name, .name, .title, .item-name, strong, b, h4, h3, .dish-name') || item;
+    return (nameEl.textContent || '').trim().toLowerCase();
+  }
+
+  const items = getItems();
+
+  q && q.addEventListener('input', ()=>{
+    const needle = q.value.trim().toLowerCase();
+    items.forEach(it=>{
+      const match = !needle || getItemNameText(it).includes(needle);
+      // Show/hide the whole row; try parent if needed
+      const row = it.matches('section, .item, .mi, li, .menu-item, .row') ? it : (it.closest('.item, .mi, li, .menu-item, .row') || it);
+      row.style.display = match ? '' : 'none';
+    });
+  });
+</script>
+
 </body>
 </html>`;
 
@@ -289,7 +430,7 @@ export async function exportViewerEmbedded() {
   a.download = 'viewer.html';
   a.click();
   URL.revokeObjectURL(a.href);
-  alert('📄 viewer.html (single-file) exported');
+  alert('📄 viewer.html (Phase 13: nav + search) exported');
 }
 
 // ===== QR (optional; safe if lib missing) =====
