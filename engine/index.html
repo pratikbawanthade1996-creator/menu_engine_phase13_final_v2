@@ -5,6 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Menu Engine — Owner Dashboard</title>
   <style>
+  .hidden { display:none !important; }
+</style>
+
+  <style>
     :root{
       --bg:#0f1216; --card:#151a21; --ink:#e8edf3; --muted:#9aa3ad; --line:#232b36;
       --brand:#66e0a3; --accent:#73b4ff; --panel:#0c1016;
@@ -15,7 +19,7 @@
     body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);display:grid;grid-template-columns:320px 1fr}
     aside{background:var(--card);border-right:1px solid var(--line);padding:18px;display:flex;flex-direction:column;gap:14px}
     main{padding:18px}
-    h1{margin:0;font-size:20px}
+  h1{margin:0;font-size:20px;color:#ff8800}
     small{color:var(--muted)}
     section{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
     label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px}
@@ -118,6 +122,36 @@
         <button id="btnWhatsApp" class="ghost">WhatsApp</button>
       </div>
     </section>
+
+    <!-- WhatsApp & Call (Std/Premium) -->
+<div data-feature="whatsapp">
+  <button id="btnWhatsApp">WhatsApp</button>
+</div>
+<div data-feature="call">
+  <button id="btnCall">Call Now</button>
+</div>
+
+<!-- Google Map (Std/Premium) -->
+<div data-feature="map">
+  <a id="btnMap" href="#" target="_blank">View Map / Get Directions</a>
+</div>
+
+<!-- Google Reviews (Std/Premium, enhanced in Premium) -->
+<div data-feature="reviews">
+  <a id="btnReviews" href="#" target="_blank">See Google Reviews</a>
+</div>
+
+<!-- Banner/Offers (Premium only) -->
+<section data-feature="banner">
+  <div id="offerBanner">Festive Offers</div>
+</section>
+
+<!-- Theme switch (Premium) -->
+<section data-feature="theme">
+  <label>Theme</label>
+  <select id="themeSelect"></select>
+</section>
+
 
     <footer>Built with ❤ in Gondia • v11</footer>
   </aside>

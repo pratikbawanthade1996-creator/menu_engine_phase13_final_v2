@@ -1,0 +1,11 @@
+{
+  "plan": "Premium",
+  "restaurant": "Demo Dine-In",
+  "phone": "0000000000",
+  "whatsapp": "919999999999",
+  "mapLink": "https://maps.google.com/?q=...",
+  "reviewsLink": "https://g.page/r/....",
+  "features": ["qr","whatsapp","call","map","reviews","banner","theme"],
+  "themes": ["Classic","Bright","Warm"],
+  "price": 2999
+}

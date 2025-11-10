@@ -468,3 +468,194 @@ function escapeHtml(str){
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
   }[s]));
 }
+// ===============================
+// PHASE 14 FEATURE: Plan Detection Logic
+// ===============================
+
+document.addEventListener("DOMContentLoaded", function() {
+  // Get plan from URL (e.g., ?plan=premium)
+  const urlParams = new URLSearchParams(window.location.search);
+  const plan = urlParams.get("plan") || "basic";
+  console.log("Detected plan:", plan);
+
+  // Load corresponding client JSON file
+  fetch(`../clients/${plan}/client.json`)
+    .then(response => response.json())
+    .then(data => {
+      console.log("Loaded client data:", data);
+      // 👇 Apply loaded client configuration to UI
+applyClientToUI(client);
+
+
+      // Hide all optional features first
+      document.querySelectorAll("[data-feature]").forEach(el => {
+        el.classList.add("hidden");
+      });
+
+      // Show only the features defined in client.json
+      if (data.features) {
+        data.features.forEach(feature => {
+          const el = document.querySelector(`[data-feature="${feature.toLowerCase()}"]`);
+          if (el) el.classList.remove("hidden");
+        });
+      }
+    })
+    .catch(err => console.error("Error loading plan data:", err));
+});
+// ------- Phase 14: Plan Detection & Feature Toggle -------
+
+// 1) URL se plan pick:  ?plan=basic | standard | premium
+function getQueryParam(key) {
+  return new URLSearchParams(window.location.search).get(key);
+}
+function getPlan() {
+  const p = (getQueryParam("plan") || "basic").toLowerCase();
+  if (["basic","standard","premium"].includes(p)) return p;
+  return "basic";
+}
+
+// 2) Client config load (from clients/<plan>/client.json)
+async function loadClientConfig(plan) {
+  const base = location.pathname.includes('/engine/') ? '../' : './';
+  const url = `${base}clients/${plan}/client.json`;
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`client.json not found for plan: ${plan}`);
+  return res.json();
+}
+
+
+// 3) Features map per plan (fallback safety)
+const PLAN_FEATURES = {
+  basic:    new Set(["qr"]),
+  standard: new Set(["qr","whatsapp","call","map","reviews"]),
+  premium:  new Set(["qr","whatsapp","call","map","reviews","banner","theme"])
+};
+
+// 4) UI helpers
+function setFeatureVisibility(featuresSet) {
+  document.querySelectorAll("[data-feature]").forEach(el => {
+    const key = el.getAttribute("data-feature");
+    el.classList.toggle("hidden", !featuresSet.has(key));
+  });
+}
+
+// 5) Wire dynamic links/values
+function applyClientBindings(cfg) {
+  // WhatsApp
+  const waBtn = document.getElementById("btnWhatsApp");
+  if (waBtn && cfg.whatsapp) {
+    waBtn.onclick = () => window.open(`https://wa.me/${cfg.whatsapp}`, "_blank");
+  }
+  // Call
+  const callBtn = document.getElementById("btnCall");
+  if (callBtn && cfg.phone) {
+    callBtn.onclick = () => window.location.href = `tel:${cfg.phone}`;
+  }
+  // Map
+  const mapA = document.getElementById("btnMap");
+  if (mapA && cfg.mapLink) {
+    mapA.href = cfg.mapLink;
+  }
+  // Reviews
+  const revA = document.getElementById("btnReviews");
+  if (revA && cfg.reviewsLink) {
+    revA.href = cfg.reviewsLink;
+  }
+  // Theme options (Premium)
+  const themeSel = document.getElementById("themeSelect");
+  if (themeSel && Array.isArray(cfg.themes)) {
+    themeSel.innerHTML = cfg.themes.map(t => `<option value="${t}">${t}</option>`).join("");
+    themeSel.onchange = () => applyTheme(themeSel.value);
+  }
+}
+
+
+// -------------------- Feature Visibility Helper --------------------
+function setFeatureVisible(key, on) {
+  const blocks = document.querySelectorAll(`[data-feature="${key}"]`);
+  blocks.forEach(b => b.style.display = on ? '' : 'none');
+}
+
+// -------------------- Business + Links Apply Helper --------------------
+function normalizePhone(str = '') {
+  return String(str).replace(/\D/g, '').replace(/^0+/, '');
+}
+
+function applyClientToUI(cfg) {
+  // 0) Debug — dekh le kaunse features aa rahe
+  const fset = new Set(cfg.features || []);
+  console.log('PLAN:', cfg.plan, 'FEATURES:', Array.from(fset));
+
+  // 1) Hide EVERYTHING first
+  document.querySelectorAll('[data-feature]').forEach(el => {
+    el.style.display = 'none';
+  });
+
+  // 2) Show only allowed
+  for (const key of fset) {
+    document.querySelectorAll(`[data-feature="${key}"]`).forEach(el => {
+      el.style.display = '';
+    });
+  }
+
+  // 3) (rest of your code stays same) — links, buttons, theme select…
+  const waNum = normalizePhone(cfg.whatsapp);
+  const callNum = normalizePhone(cfg.phone);
+  const waLink  = waNum ? `https://wa.me/${waNum}?text=${encodeURIComponent('Hi '+(cfg.restaurant||''))}` : '#';
+  const telLink = callNum ? `tel:${callNum}` : '#';
+  const mapLink = cfg.mapLink     || '#';
+  const revLink = cfg.reviewsLink || '#';
+
+  const btnWA   = document.getElementById('btnWhatsApp');
+  const btnCall = document.getElementById('btnCall');
+  const aMap    = document.getElementById('btnMap');
+  const aRev    = document.getElementById('btnReviews');
+
+  if (btnWA)   btnWA.onclick  = () => { if (waLink  !== '#') window.open(waLink,  '_blank'); };
+  if (btnCall) btnCall.onclick = () => { if (telLink !== '#') window.location.href = telLink; };
+  if (aMap)    aMap.href = mapLink;
+  if (aRev)    aRev.href = revLink;
+
+  const themeSel = document.getElementById('themeSelect');
+  if (themeSel) {
+    const themes = Array.isArray(cfg.themes) ? cfg.themes : [];
+    themeSel.innerHTML =
+      themes.map(t => `<option value="${t}">${t}</option>`).join('') ||
+      '<option value="Classic">Classic</option>';
+    themeSel.onchange = () => applyTheme(themeSel.value);
+    if (themes.length) applyTheme(themes[0]);
+  }
+}
+
+// 7) Boot
+async function initPlanSystem() {
+  try {
+    const plan = getPlan(); // 'basic' | 'standard' | 'premium'
+    const cfg  = await loadClientConfig(plan);
+    function setFeatureVisible(key, on) {
+  const blocks = document.querySelectorAll(`[data-feature="${key}"]`);
+  blocks.forEach(b => b.style.display = on ? '' : 'none');
+}
+
+
+    // choose features from cfg.features OR fallback map
+    const featuresSet = new Set(cfg.features && cfg.features.length ? cfg.features : PLAN_FEATURES[plan]);
+
+    // Toggle visibility
+    setFeatureVisibility(featuresSet);
+
+    // Bind links/buttons
+    applyClientBindings(cfg);
+
+    // Premium banner example
+    if (featuresSet.has("banner")) {
+      const banner = document.getElementById("offerBanner");
+      if (banner) banner.textContent = "Diwali Specials: Buy 1 Get 1 – Weekend!";
+    }
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+// ensure this runs after DOM ready
+document.addEventListener("DOMContentLoaded", initPlanSystem);

@@ -1,0 +1,20 @@
+{
+  "projectName": "Smart Menu - Phase 14",
+  "autoEditEnabled": true,
+  "mainFiles": ["engine/engine.js", "engine/index.html"],
+  "backupPath": "../menu_engine_phase13_final_backup_2025Nov",
+  "notes": "This enables ChatGPT direct edit mode for code updates."
+}
+{
+  "autoStyleUpdate": true,
+  "targets": {
+    "index.html": {
+      "styleSection": true,
+      "defaultSelector": "h1",
+      "defaultProperty": "color"
+    }
+  },
+  "commands": {
+    "changeColor": "update the color property of the h1 selector in the <style> tag of index.html"
+  }
+}

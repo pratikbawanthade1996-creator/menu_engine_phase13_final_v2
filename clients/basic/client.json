@@ -1,0 +1,10 @@
+{
+  "plan": "Basic",
+  "restaurant": "Demo Cafe",
+  "phone": "",
+  "whatsapp": "",
+  "mapLink": "",
+  "reviewsLink": "",
+  "features": ["qr"],
+  "price": 1199
+}

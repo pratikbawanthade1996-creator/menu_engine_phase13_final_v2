@@ -1,0 +1,28 @@
+{
+  "folders": [
+    { "path": "." }
+  ],
+  "name": "menu_engine_phase10_5_final",
+  "settings": {
+    "files.exclude": {
+      "**/.git": true,
+      "**/node_modules": true
+    },
+    "editor.formatOnSave": true,
+    "liveServer.settings.port": 8000,
+    "menuEngine.copilotInstructions": ".github/copilot-instructions.md"
+  },
+  "extensions": {
+    "recommendations": [
+      "ritwickdey.LiveServer",
+      "esbenp.prettier-vscode",
+      "dbaeumer.vscode-eslint",
+      "GitHub.copilot"
+    ]
+  }
+  ,
+"chatgpt": {
+    "configFile": ".chatgpt-config.json"
+}
+
+}
