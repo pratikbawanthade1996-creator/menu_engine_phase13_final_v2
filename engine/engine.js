@@ -16,6 +16,11 @@ export const state = {
   theme:    localStorage.getItem(STORAGE_THEME) || REGISTRY.defaults.theme,
   template: localStorage.getItem(STORAGE_TPL)   || REGISTRY.defaults.template,
 };
+// safe DOM helper used by agent edits
+function safeQueryAll(selector) {
+  try { return Array.from(document.querySelectorAll(selector) || []); }
+  catch (e) { return []; }
+}
 
 // ===== Sample fallback (for “Load sample”) =====
 const SAMPLE = {
@@ -221,7 +226,15 @@ function render() {
   if (!mount) { console.warn('No mount element (#preview/#app/#mount) found'); return; }
 
   renderTemplate(state.template, state.menu)
-    .then(html => { mount.innerHTML = html; })
+    .then(html => { mount.innerHTML = html;
+      try {
+        const activePlan = localStorage.getItem('menu_active_plan') || Object.keys(PLAN_FEATURES)[0];
+        setActivePlan(activePlan);
+      } catch (e) { /* ignore plan apply errors */ }
+      try { enforceGalleryLimit(); } catch (e) {}
+      // expose setter for console/runtime
+      window.setActivePlan = setActivePlan;
+    })
     .catch(err => {
       console.error('Render error:', err);
       mount.innerHTML =
@@ -479,24 +492,20 @@ document.addEventListener("DOMContentLoaded", function() {
   console.log("Detected plan:", plan);
 
   // Load corresponding client JSON file
-  fetch(`../clients/${plan}/client.json`)
-    .then(response => response.json())
-    .then(data => {
-      console.log("Loaded client data:", data);
-      // 👇 Apply loaded client configuration to UI
-applyClientToUI(client);
-
-
-      // Hide all optional features first
-      document.querySelectorAll("[data-feature]").forEach(el => {
-        el.classList.add("hidden");
-      });
+   fetch(`../clients/${plan}/client.json`)
+     .then(response => response.json())
+     .then(data => {
+       console.log("Loaded client data:", data);
+       // 👇 Apply loaded client configuration to UI
+      applyClientToUI(data);
+      // Hide all optional features first (safe)
+      safeQueryAll("[data-feature]").forEach(el => { try { el.classList.add("hidden"); } catch (e) {} });
 
       // Show only the features defined in client.json
       if (data.features) {
         data.features.forEach(feature => {
           const el = document.querySelector(`[data-feature="${feature.toLowerCase()}"]`);
-          if (el) el.classList.remove("hidden");
+          if (el) try { el.classList.remove("hidden"); } catch (e) {}
         });
       }
     })
@@ -524,18 +533,67 @@ async function loadClientConfig(plan) {
 }
 
 
-// 3) Features map per plan (fallback safety)
+// 3) Features map per plan (fallback safety) — richer config with gallery limits & flags
 const PLAN_FEATURES = {
-  basic:    new Set(["qr"]),
-  standard: new Set(["qr","whatsapp","call","map","reviews"]),
-  premium:  new Set(["qr","whatsapp","call","map","reviews","banner","theme"])
+  basic: {
+    features: new Set(["qr"]),
+    galleryLimit: 0,
+    showImages: false,
+    theme: "default"
+  },
+  standard: {
+    features: new Set(["qr","whatsapp","call","map","reviews"]),
+    galleryLimit: 10,
+    showImages: true,
+    theme: "standard"
+  },
+  premium: {
+    features: new Set(["qr","whatsapp","call","map","reviews","banner","theme"]),
+    galleryLimit: null, // unlimited represented as null
+    showImages: true,
+    theme: "premium"
+  }
 };
+
+// Expose a small API to switch plans at runtime (affects feature visibility and theme attr).
+function setActivePlan(planName) {
+  const cfg = PLAN_FEATURES[planName];
+  if (!cfg) { console.warn("Unknown plan:", planName); return; }
+  // Toggle feature visibility based on the plan's feature set
+  setFeatureVisibility(cfg.features);
+  // Apply theme attribute for CSS-level switches (templates/themes may read this)
+  try { document.documentElement.setAttribute("data-menu-theme", cfg.theme || "default"); } catch (e) {}
+  try { localStorage.setItem("menu_active_plan", planName); } catch (e) {}
+  // make current config available for debugging or templates
+  window.currentPlanConfig = cfg;
+}
+
+// Enforce gallery limits by hiding images beyond the plan's galleryLimit.
+function enforceGalleryLimit() {
+  try {
+    const planName = localStorage.getItem("menu_active_plan") || Object.keys(PLAN_FEATURES)[0];
+    const cfg = PLAN_FEATURES[planName] || PLAN_FEATURES.basic || {};
+    const limit = cfg.galleryLimit;
+    const showImages = cfg.showImages !== undefined ? cfg.showImages : true;
+    const images = safeQueryAll('.menu-item-image, .item-photo');
+    images.forEach((img, idx) => {
+      try {
+        if (!showImages) { if (img) img.style.display = 'none'; return; }
+        if (limit === null || limit === undefined) { if (img) img.style.display = ''; return; }
+        if (Number.isFinite(limit) && idx >= limit) { if (img) img.style.display = 'none'; }
+        else { if (img) img.style.display = ''; }
+      } catch (e) { /* ignore individual node errors */ }
+    });
+  } catch (e) { console.warn('enforceGalleryLimit error:', e); }
+}
 
 // 4) UI helpers
 function setFeatureVisibility(featuresSet) {
-  document.querySelectorAll("[data-feature]").forEach(el => {
-    const key = el.getAttribute("data-feature");
-    el.classList.toggle("hidden", !featuresSet.has(key));
+  safeQueryAll("[data-feature]").forEach(el => {
+    try {
+      const key = el.getAttribute("data-feature");
+      el.classList.toggle("hidden", !featuresSet.has(key));
+    } catch (e) { /* ignore bad nodes */ }
   });
 }
 
@@ -572,8 +630,8 @@ function applyClientBindings(cfg) {
 
 // -------------------- Feature Visibility Helper --------------------
 function setFeatureVisible(key, on) {
-  const blocks = document.querySelectorAll(`[data-feature="${key}"]`);
-  blocks.forEach(b => b.style.display = on ? '' : 'none');
+  const blocks = safeQueryAll(`[data-feature="${key}"]`);
+  blocks.forEach(b => { try { b.style.display = on ? '' : 'none'; } catch (e) {} });
 }
 
 // -------------------- Business + Links Apply Helper --------------------
@@ -587,16 +645,12 @@ function applyClientToUI(cfg) {
   console.log('PLAN:', cfg.plan, 'FEATURES:', Array.from(fset));
 
   // 1) Hide EVERYTHING first
-  document.querySelectorAll('[data-feature]').forEach(el => {
-    el.style.display = 'none';
-  });
+  safeQueryAll('[data-feature]').forEach(el => { try { el.style.display = 'none'; } catch (e) {} });
 
   // 2) Show only allowed
-  for (const key of fset) {
-    document.querySelectorAll(`[data-feature="${key}"]`).forEach(el => {
-      el.style.display = '';
-    });
-  }
+    for (const key of fset) {
+      safeQueryAll(`[data-feature="${key}"]`).forEach(el => { try { el.style.display = ''; } catch (e) {} });
+    }
 
   // 3) (rest of your code stays same) — links, buttons, theme select…
   const waNum = normalizePhone(cfg.whatsapp);
@@ -633,13 +687,12 @@ async function initPlanSystem() {
     const plan = getPlan(); // 'basic' | 'standard' | 'premium'
     const cfg  = await loadClientConfig(plan);
     function setFeatureVisible(key, on) {
-  const blocks = document.querySelectorAll(`[data-feature="${key}"]`);
-  blocks.forEach(b => b.style.display = on ? '' : 'none');
-}
+      safeQueryAll(`[data-feature="${key}"]`).forEach(b => { try { b.style.display = on ? '' : 'none'; } catch (e) {} });
+    }
 
 
-    // choose features from cfg.features OR fallback map
-    const featuresSet = new Set(cfg.features && cfg.features.length ? cfg.features : PLAN_FEATURES[plan]);
+  // choose features from cfg.features OR fallback map (PLAN_FEATURES now has .features)
+  const featuresSet = new Set(cfg.features && cfg.features.length ? cfg.features : Array.from(PLAN_FEATURES[plan].features));
 
     // Toggle visibility
     setFeatureVisibility(featuresSet);
@@ -659,3 +712,27 @@ async function initPlanSystem() {
 
 // ensure this runs after DOM ready
 document.addEventListener("DOMContentLoaded", initPlanSystem);
+
+// Plan switcher: wire up sidebar buttons to change plans at runtime
+function initPlanSwitcher() {
+  safeQueryAll('.plan-btn').forEach(btn => {
+    try {
+      btn.addEventListener('click', () => {
+        const plan = btn.getAttribute('data-plan');
+        if (!plan) return;
+        try { setActivePlan(plan); } catch (e) {}
+        try { enforceGalleryLimit(); } catch (e) {}
+        safeQueryAll('.plan-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    } catch (e) { /* ignore button attach errors */ }
+  });
+  const cur = localStorage.getItem('menu_active_plan') || 'basic';
+  try {
+    const el = document.querySelector(`.plan-btn[data-plan="${cur}"]`);
+    if (el) el.classList.add('active');
+  } catch (e) {}
+}
+if (typeof window !== 'undefined') {
+  document.addEventListener('DOMContentLoaded', initPlanSwitcher);
+}

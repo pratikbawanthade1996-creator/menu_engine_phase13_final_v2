@@ -27,6 +27,10 @@
     .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
     button{background:linear-gradient(180deg,var(--brand),var(--accent));color:#0a0a0a;border:0;border-radius:12px;padding:10px 12px;font-weight:700;cursor:pointer}
     button.ghost{background:#0b1016;color:var(--ink);border:1px solid var(--line)}
+  .plan-switcher { padding: 12px 10px; }
+  .plan-buttons { display:flex; gap:8px; margin-top:6px; }
+  .plan-btn { background: transparent; border:1px solid var(--line); padding:6px 10px; border-radius:8px; cursor:pointer; }
+  .plan-btn.active { background: var(--brand); color: #fff; }
     #preview,#app,#mount{background:var(--card);border:1px solid var(--line);border-radius:14px;min-height:70vh;padding:16px}
     .muted{color:var(--muted)}
     footer{color:var(--muted);font-size:12px;text-align:center}
@@ -39,6 +43,16 @@
     <div>
       <h1>Menu Engine</h1>
       <small>Offline • Gondia • ClientFirst.digital</small>
+    </div>
+
+    <!-- Plan Switcher UI -->
+    <div class="plan-switcher">
+      <label>Plan:</label>
+      <div class="plan-buttons">
+        <button data-plan="basic" class="plan-btn">Basic</button>
+        <button data-plan="standard" class="plan-btn">Standard</button>
+        <button data-plan="premium" class="plan-btn">Premium</button>
+      </div>
     </div>
 
     <!-- Load JSON -->
