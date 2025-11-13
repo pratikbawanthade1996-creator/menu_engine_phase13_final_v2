@@ -492,14 +492,12 @@ document.addEventListener("DOMContentLoaded", function() {
   console.log("Detected plan:", plan);
 
   // Load corresponding client JSON file
-  fetch(`../clients/${plan}/client.json`)
-    .then(response => response.json())
-    .then(data => {
-      console.log("Loaded client data:", data);
-      // 👇 Apply loaded client configuration to UI
-applyClientToUI(client);
-
-
+   fetch(`../clients/${plan}/client.json`)
+     .then(response => response.json())
+     .then(data => {
+       console.log("Loaded client data:", data);
+       // 👇 Apply loaded client configuration to UI
+      applyClientToUI(data);
       // Hide all optional features first (safe)
       safeQueryAll("[data-feature]").forEach(el => { try { el.classList.add("hidden"); } catch (e) {} });
 
