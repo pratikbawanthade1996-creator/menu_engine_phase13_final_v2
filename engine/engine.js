@@ -527,12 +527,40 @@ async function loadClientConfig(plan) {
 }
 
 
-// 3) Features map per plan (fallback safety)
+// 3) Features map per plan (fallback safety) — richer config with gallery limits & flags
 const PLAN_FEATURES = {
-  basic:    new Set(["qr"]),
-  standard: new Set(["qr","whatsapp","call","map","reviews"]),
-  premium:  new Set(["qr","whatsapp","call","map","reviews","banner","theme"])
+  basic: {
+    features: new Set(["qr"]),
+    galleryLimit: 0,
+    showImages: false,
+    theme: "default"
+  },
+  standard: {
+    features: new Set(["qr","whatsapp","call","map","reviews"]),
+    galleryLimit: 10,
+    showImages: true,
+    theme: "standard"
+  },
+  premium: {
+    features: new Set(["qr","whatsapp","call","map","reviews","banner","theme"]),
+    galleryLimit: null, // unlimited represented as null
+    showImages: true,
+    theme: "premium"
+  }
 };
+
+// Expose a small API to switch plans at runtime (affects feature visibility and theme attr).
+function setActivePlan(planName) {
+  const cfg = PLAN_FEATURES[planName];
+  if (!cfg) { console.warn("Unknown plan:", planName); return; }
+  // Toggle feature visibility based on the plan's feature set
+  setFeatureVisibility(cfg.features);
+  // Apply theme attribute for CSS-level switches (templates/themes may read this)
+  try { document.documentElement.setAttribute("data-menu-theme", cfg.theme || "default"); } catch (e) {}
+  try { localStorage.setItem("menu_active_plan", planName); } catch (e) {}
+  // make current config available for debugging or templates
+  window.currentPlanConfig = cfg;
+}
 
 // 4) UI helpers
 function setFeatureVisibility(featuresSet) {
@@ -638,8 +666,8 @@ async function initPlanSystem() {
     }
 
 
-    // choose features from cfg.features OR fallback map
-    const featuresSet = new Set(cfg.features && cfg.features.length ? cfg.features : PLAN_FEATURES[plan]);
+  // choose features from cfg.features OR fallback map (PLAN_FEATURES now has .features)
+  const featuresSet = new Set(cfg.features && cfg.features.length ? cfg.features : Array.from(PLAN_FEATURES[plan].features));
 
     // Toggle visibility
     setFeatureVisibility(featuresSet);
