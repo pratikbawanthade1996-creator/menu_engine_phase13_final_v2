@@ -1,0 +1,29 @@
+/* src/css/ui-fixes.css - fixes for sticky footer and touch targets */
+.sticky-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 9999;
+  pointer-events: auto;
+  display: flex;
+  gap: 8px;
+  padding: 10px;
+  background: rgba(255,255,255,0.95);
+  box-shadow: 0 -2px 6px rgba(0,0,0,0.08);
+}
+.sticky-footer .btn {
+  flex: 1;
+  min-height: 44px; /* ensure tappable area */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #eee;
+  background: #fff;
+}
+
+/* Agent-added rule for safety (do not duplicate) */
+.data-feature-force-hidden { display: none !important; }
+.hidden-by-agent { display: none !important; }
